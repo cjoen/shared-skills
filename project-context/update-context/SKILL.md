@@ -26,26 +26,12 @@ Resolve the working environment first:
 
 1. **Repo root**: Run `git rev-parse --show-toplevel 2>/dev/null`. Store as `$REPO_ROOT`.
 2. If not in a git repo, ask: "I can't detect a git repository. What is the project root directory?"
-3. **ai-context path**: Check `~/.claude/CLAUDE.md` for an "AI Context Paths" table entry matching `$REPO_ROOT`. If found, use that path as `$AI_CONTEXT_DIR`. Otherwise default to `$REPO_ROOT/ai-context/`.
+3. **ai-context path**: Resolve as `$REPO_ROOT/ai-context/` (or user-provided root + `/ai-context/`).
 4. All git commands and relative paths use `$REPO_ROOT`.
-
-## Saving an AI Context Path
-
-Whenever the user provides or confirms an ai-context path that differs from `$REPO_ROOT/ai-context/`, save the association to `~/.claude/CLAUDE.md`. Add or update an "AI Context Paths" section:
-
-```markdown
-## AI Context Paths
-
-| Repo | AI Context Directory |
-|------|---------------------|
-| `/path/to/repo` | `/path/to/ai-context` |
-```
-
-If the section already exists, append a new row (or update the existing row for this repo). Do not duplicate entries.
 
 # Init Workflow
 
-Create `ai-context/` with context docs from thorough codebase exploration.
+Create `ai-context/` at the project root with context docs from thorough codebase exploration.
 
 ## Phase 1: Deep Exploration
 
@@ -63,46 +49,60 @@ Explore the project. Adapt investigation to project type (backend, frontend, CLI
 
 Read key files, grep patterns, check configs. Don't guess — accuracy is the point.
 
-## Phase 2: Choose Location
+## Phase 2: Ignore Before Writing
 
-Before writing any files, ask the user where to place `ai-context/`. Present two options:
+**This step is mandatory and must run before you create any file.** `ai-context/` lives
+at the repo root but is for AI agents on this machine, not the shared repo. Ignoring it
+first means it is never briefly visible as untracked changes in the user's `git status`.
 
-**Option 1 — Sibling folder** (recommended if team isn't using this yet):
+Run this exactly:
+
+```bash
+cd "$REPO_ROOT"
+if git check-ignore -q ai-context/ 2>/dev/null; then
+  echo "already ignored"
+elif [ -f .gitignore ]; then
+  printf '\n# AI context docs (local only)\nai-context/\n' >> .gitignore
+  echo "added to .gitignore"
+else
+  printf '\n# AI context docs (local only)\nai-context/\n' >> .git/info/exclude
+  echo "added to .git/info/exclude"
+fi
 ```
-~/work/ai-context/<project-name>/
+
+Prefer `.gitignore` when one exists. Fall back to `.git/info/exclude` only when the repo
+has no `.gitignore` — `info/exclude` is local-only and never committed, so it is the
+safe choice on a repo whose team has not adopted this workflow.
+
+**Verify before continuing:**
+
+```bash
+git -C "$REPO_ROOT" check-ignore -q ai-context/ && echo IGNORED || echo NOT_IGNORED
 ```
-Keeps docs out of the repo entirely. No `.gitignore` entry needed. Easy to move into the repo later once the team is onboarded.
 
-**Option 2 — Inside the repo**:
-```
-<repo-root>/ai-context/
-```
-Makes docs available to all contributors via version control. If the team isn't using this yet, recommend adding `ai-context/` to `.gitignore` until they are.
-
-Store the chosen path as `$AI_CONTEXT_DIR`. Use it for all file writes in this workflow.
-
-If the user already specified a path (e.g., `/update-context init ~/work/ai-context/myproject`), skip this prompt and use that path.
-
-If `$AI_CONTEXT_DIR` differs from `$REPO_ROOT/ai-context/`, save the association to `~/.claude/CLAUDE.md` (see **Saving an AI Context Path** above).
+If this prints `NOT_IGNORED`, stop and tell the user rather than writing docs into a
+repo that will pick them up as untracked files. Note that editing `.gitignore` leaves a
+modified tracked file in the user's working tree — mention this in your summary so they
+can decide whether to commit that one-line change.
 
 ## Phase 3: Create Documents
 
-Create `$AI_CONTEXT_DIR/` with docs tailored to what this project has. A small CLI might need only `architecture.md` + `conventions.md`; a large monorepo may need all. Use judgment.
+Create `ai-context/` at the repo root with docs tailored to what this project has. A small CLI might need only `context/architecture.md` + `context/conventions.md`; a large monorepo may need all. Use judgment.
 
-### Directory layout
+**Layout:** `README.md` stays at the `ai-context/` root — it is the index. Every core context doc goes under an `ai-context/context/` subfolder. Do **not** create a `research/` folder during init: that folder is owned by the `/codebase-research` skill, which creates it on its first run.
 
 ```
-$AI_CONTEXT_DIR/
-  README.md            # index — stays at the root
-  context/             # core context docs (architecture, conventions, etc.)
-  research/            # /codebase-research output — created on demand by that skill
+ai-context/
+  README.md            # index + Document Scopes table — stays at root
+  context/             # all core context docs live here
+    architecture.md
+    conventions.md
+    ...                # data-layer, api, navigation, testing, etc. as applicable
 ```
-
-The `README.md` index lives at the root. **All core context docs go in `context/`.** The `research/` subdirectory holds point-in-time deep-dives written by `/codebase-research`; do not create it during init — that skill makes it when it first runs.
 
 ### Always create:
 
-**`$AI_CONTEXT_DIR/README.md`** — Index of all context files. Include:
+**`ai-context/README.md`** — Index of all context files. Include:
 - Project identity (name, stack, what it does, one paragraph)
 - Table of all context docs with one-line descriptions
 - **Scope table**: maps each doc to codebase paths it watches (Update workflow uses this for staleness)
@@ -120,14 +120,14 @@ Example scope table:
 | `context/api.md` | `src/routes/`, `src/middleware/`, `src/auth/` |
 ```
 
-**`$AI_CONTEXT_DIR/context/architecture.md`** — Most important doc:
+**`ai-context/context/architecture.md`** — Most important doc:
 - Tech stack table (layer → technology + version)
 - Top-level directory map with annotations
 - Module/package/service taxonomy (categorized, one-line descriptions)
 - Import/module resolution conventions
 - Build and deploy tooling overview
 
-### Create if applicable (also under `context/`):
+### Create if applicable (all under `ai-context/context/`):
 
 - **Data layer** — Database schemas, ORMs, state stores, caching, data flow patterns
 - **External interfaces / API layer** — Clients consumed, APIs exposed, auth, environment config
@@ -165,9 +165,9 @@ Compare `ai-context/` docs against the current codebase; update stale ones.
 
 ## Phase 1: Compare Freshness
 
-If `ai-context/` doesn't exist at `$REPO_ROOT/ai-context/`: ask the user where their ai-context directory is. If they don't have one yet, tell them to run `/update-context init` first. If they provide a path, use it as `$AI_CONTEXT_DIR` and save the association to `~/.claude/CLAUDE.md` (see **Saving an AI Context Path** above).
+If `ai-context/` doesn't exist: tell the user to run `/update-context init` first.
 
-For each core context doc (the root `README.md` plus everything in `$AI_CONTEXT_DIR/context/`):
+For each core doc (`README.md` at the root plus every doc under `ai-context/context/`):
 
 1. Extract `Last updated` date and version/commit from footer. **Missing or unparseable footer = stale.**
 2. Determine current repo state:
@@ -176,7 +176,7 @@ For each core context doc (the root `README.md` plus everything in `$AI_CONTEXT_
    git log -1 --format='%H %ai %s'
    git rev-list --count --since='YYYY-MM-DD' HEAD
    ```
-3. Use the **scope table** in `$AI_CONTEXT_DIR/README.md` to find each doc's watched paths
+3. Use the **scope table** in `ai-context/README.md` to find each doc's watched paths
 4. Doc is **stale** if any commits since last update touch its scope paths; **current** otherwise.
 
 ## Phase 2: Find the Diff
@@ -273,7 +273,7 @@ Search ai-context docs for the incorrect claim:
 1. Extract key terms from the correction (the wrong thing, not the right thing)
 2. Grep all ai-context docs for those terms:
    ```bash
-   grep -ri "<key-terms>" $AI_CONTEXT_DIR/
+   grep -ri "<key-terms>" $REPO_ROOT/ai-context/
    ```
 3. Read each matching section in full — don't rely on grep snippets
 4. List every doc and section containing the assumption
@@ -306,7 +306,7 @@ For each affected section:
 After editing, check for the same assumption elsewhere:
 
 ```bash
-grep -ri "<wrong-term>" $AI_CONTEXT_DIR/
+grep -ri "<wrong-term>" $REPO_ROOT/ai-context/
 ```
 
 If found in other docs, apply the same correction there.

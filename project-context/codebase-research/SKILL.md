@@ -8,11 +8,6 @@ argument-hint: <topic> (e.g., "auth flow", "CI pipeline", "Redux generators", "n
 
 Conduct a deep-dive investigation into a specific codebase area and produce a research document capturing findings.
 
-## Environment Detection
-
-1. Run `git rev-parse --show-toplevel 2>/dev/null`. Store as `$REPO_ROOT`.
-2. Check `~/.claude/CLAUDE.md` for an "AI Context Paths" table entry matching `$REPO_ROOT`. If found, use that path as `$AI_CONTEXT_DIR`. Otherwise use `$REPO_ROOT/ai-context/`.
-
 ## Input
 
 If `$ARGUMENTS` is empty, ask what area to research.
@@ -23,7 +18,7 @@ If `$ARGUMENTS` is provided, treat it as the topic. Incorporate any additional c
 
 Quick orientation before exploration:
 
-1. **Check `$AI_CONTEXT_DIR`** — if it exists, read `$AI_CONTEXT_DIR/README.md`, the core docs in `$AI_CONTEXT_DIR/context/`, and any docs in `$AI_CONTEXT_DIR/research/` to know what's already documented. Avoid duplicates. If it doesn't exist, skip this step — note at the end that running `/update-context init` would give this research a home.
+1. **Check ai-context/** — if it exists, read `ai-context/README.md` and any docs in `ai-context/research/` (`ls ai-context/research/ 2>/dev/null` — no output means the folder doesn't exist yet and this is the first research run) to know what's already documented. Avoid duplicates. If `ai-context/` doesn't exist at all, note at the end that running `/update-context init` would give this research a fuller home. This skill **owns** the `research/` folder: `/update-context init` never creates it, so `/codebase-research` creates it on its first run (see Phase 4).
 2. **Check for project context files** — scan for CLAUDE.md, MEMORY.md, or similar files with project-specific notes relevant to the topic.
 3. **Determine scope** — identify 2-3 distinct investigation angles for parallel exploration.
 
@@ -60,7 +55,26 @@ Do not skip this — agent findings are summaries that may miss nuance.
 
 ## Phase 4: Write
 
-Create the research document at `$AI_CONTEXT_DIR/research/<topic>-research.md`. Create the `research/` directory if it doesn't exist yet.
+**First, make sure `ai-context/` is git-ignored.** This skill can create `ai-context/`
+before `/update-context init` has ever run, so it must apply the same guard rather than
+assuming init did it:
+
+```bash
+REPO_ROOT=$(git rev-parse --show-toplevel)
+cd "$REPO_ROOT"
+if git check-ignore -q ai-context/ 2>/dev/null; then
+  echo "already ignored"
+elif [ -f .gitignore ]; then
+  printf '\n# AI context docs (local only)\nai-context/\n' >> .gitignore
+else
+  printf '\n# AI context docs (local only)\nai-context/\n' >> .git/info/exclude
+fi
+git check-ignore -q ai-context/ && echo IGNORED || echo NOT_IGNORED
+```
+
+If that prints `NOT_IGNORED`, stop and tell the user instead of writing into the repo.
+
+Then ensure the `ai-context/research/` folder exists — create it on this first run if it doesn't (`mkdir -p ai-context/research`). Then create the research document at `ai-context/research/<topic>-research.md`.
 
 **Naming:** lowercase, hyphenated, suffixed with `-research.md`. Examples:
 - `auth-flow-research.md`, `ci-pipeline-research.md`, `payment-service-research.md`
@@ -108,7 +122,7 @@ After writing, briefly summarize for the user:
 
 ## Anti-patterns
 
-- **Don't duplicate ai-context core docs** — if `context/architecture.md` already covers something, reference it instead of restating it in the research doc.
+- **Don't duplicate ai-context core docs** — if `architecture.md` already covers something, reference it instead of restating it in the research doc.
 - **Don't write a document that's just a file listing** — research docs should explain *how things work and why*, not just *what exists*.
 - **Don't leave agent findings unverified** — always read key files yourself before writing.
 - **Don't over-scope** — a research doc should be focused enough to read in 5-10 minutes. If the topic is too broad, suggest splitting into multiple docs.
