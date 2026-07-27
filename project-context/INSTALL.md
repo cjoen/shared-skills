@@ -49,13 +49,12 @@ In `~/.claude/CLAUDE.md`, add:
 ```markdown
 ## Check for Project Context First
 
-Before exploring code, making assumptions, or launching Explore agents, find the
-ai-context directory. Priority order:
+Before exploring code, making assumptions, or launching Explore agents, check for
+project context files at the repo root. Priority order:
 
-1. Check this file's "AI Context Paths" section for an entry matching the current repo root
-2. `ai-context/` directory at repo root — read `README.md` inside, then load relevant docs
-3. `ai-context.md` — flat-file variant for smaller projects
-4. `CONTEXT.md` — common single-file convention
+1. `ai-context/` directory — read `README.md` inside, then load relevant docs from `context/`
+2. `ai-context.md` — flat-file variant for smaller projects
+3. `CONTEXT.md` — common single-file convention
 
 If none exist and the task involves code exploration or research, suggest the
 `/update-context` skill to bootstrap one.
@@ -69,12 +68,34 @@ Run the init — use Opus for the first run, Sonnet handles updates fine:
 /update-context init
 ```
 
-After exploring the codebase, the skill will ask where to place `ai-context/`:
+No prompts to answer — the skill explores the codebase and writes to `<repo-root>/ai-context/`:
 
-- **Sibling folder** (recommended if team isn't onboarded yet) — e.g. `~/work/ai-context/<project-name>/`. Stays out of the repo, no `.gitignore` needed.
-- **Inside the repo** — `<repo-root>/ai-context/`. Add `ai-context/` to `.gitignore` until the team is onboarded.
+```
+ai-context/
+  README.md            # index + scope table (which doc watches which paths)
+  context/             # core docs — architecture.md, conventions.md, etc.
+  research/            # created later by /codebase-research, not by init
+```
 
-You can also skip the prompt by passing the path inline: `/update-context init ~/work/ai-context/myproject`.
+**It stays out of your commits.** Before writing a single file, the skill runs
+`git check-ignore` and, if `ai-context/` isn't already ignored, appends it to the repo's
+`.gitignore` — or to `.git/info/exclude` when the repo has no `.gitignore`. It then
+re-checks and refuses to write anything if the path still isn't ignored. Both
+`/update-context` and `/codebase-research` apply this guard, so whichever you run first
+is covered.
+
+`.git/info/exclude` is local-only and never committed, which makes this safe on a repo
+shared with a team that hasn't adopted the workflow. On a repo that does have a
+`.gitignore`, note that the one-line addition is a modification to a tracked file —
+yours to commit or revert.
+
+### 3. Verify (optional)
+
+```bash
+git check-ignore -v ai-context/
+```
+
+Prints the file and line number of the matching rule. No output means it isn't ignored.
 
 ## Commands
 
